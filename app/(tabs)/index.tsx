@@ -1,98 +1,239 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  FlatList,
+  Modal,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { Colors } from '@/constants/theme';
+import { getPlants } from '@/firebase/firestore/CRUD';
+import { useAuth } from '@/providers/AuthProvider';
+import { useTheme } from '@/providers/ThemeContext';
+import { Plant } from '@/types/plant';
+import { useFocusEffect } from '@react-navigation/native';
+import React from 'react';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const { user } = useAuth();
+  const router = useRouter();
+  const { theme } = useTheme();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const [plants, setPlants] = useState<Plant[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [selectedPlant, setSelectedPlant] = useState<Plant | null>(null);
+
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cached = await AsyncStorage.getItem('plants');
+        if (cached) setPlants(JSON.parse(cached));
+      } catch (err) {
+        console.error('Failed to load cached plants', err);
+      }
+    })();
+  }, []);
+
+
+  useFocusEffect(
+    React.useCallback(() => {
+      let isActive = true;
+
+      const fetchPlants = async () => {
+        if (!user) return;
+
+        setLoading(true);
+        try {
+          const freshPlants = await getPlants(user.uid);
+          if (isActive) {
+            setPlants(freshPlants);
+            AsyncStorage.setItem('plants', JSON.stringify(freshPlants)).catch(console.error);
+          }
+        } catch (err) {
+          console.error('Failed to fetch plants on focus', err);
+        } finally {
+          if (isActive) setLoading(false);
+        }
+      };
+
+      fetchPlants();
+
+      return () => {
+        isActive = false;
+      };
+    }, [user])
+  );
+
+  const filteredPlants = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return plants;
+
+    return plants.filter(
+      p =>
+        p.nickname.toLowerCase().includes(q) ||
+        p.species.toLowerCase().includes(q)
+    );
+  }, [plants, search]);
+
+  return (
+    <ThemedView style={[styles.container, { backgroundColor: Colors[theme].background }]}>
+      <ThemedText style={styles.title}>My Plants</ThemedText>
+
+      {loading && <ThemedText style={{ marginBottom: 8 }}>Refreshing…</ThemedText>}
+
+      <TextInput
+        placeholder="Search plants..."
+        placeholderTextColor={Colors[theme].text}
+        value={search}
+        onChangeText={setSearch}
+        style={[
+          styles.search,
+          {
+            backgroundColor: Colors[theme].background,
+            borderColor: Colors[theme].tint,
+            color: Colors[theme].text,
+          },
+        ]}
+      />
+
+      <FlatList
+        data={filteredPlants}
+        keyExtractor={item => item.id!}
+        contentContainerStyle={{ paddingBottom: 32 }}
+        refreshing={loading}
+        onRefresh={async () => {
+          if (!user) return;
+          setLoading(true);
+          try {
+            const freshPlants = await getPlants(user.uid);
+            setPlants(freshPlants);
+            await AsyncStorage.setItem('plants', JSON.stringify(freshPlants));
+          } catch (err) {
+            console.error(err);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        renderItem={({ item }) => (
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: Colors[theme].accent },
+            ]}
+          >
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: '/plant',
+                  params: { id: item.id },
+                })
+              }
+              style={{ flex: 1 }}
+            >
+              <ThemedText style={{ color: Colors[theme].background }} type="subtitle">{item.nickname}</ThemedText>
+              <ThemedText style={{ color: Colors[theme].background }}>{item.species}</ThemedText>
+              <ThemedText style={{ color: Colors[theme].background }}>Watering streak: {item.streak}</ThemedText>
+            </Pressable>
+
+            <Pressable onPress={() => setSelectedPlant(item)}>
+              <ThemedText 
+                type="subtitle"
+                style={[styles.dots, { color: Colors[theme].text }]}
+              >
+                ⋮
+              </ThemedText>
+            </Pressable>
+          </View>
+        )}
+        ListEmptyComponent={
+          <ThemedText style={{ marginTop: 32 }}>
+            No plants found
+          </ThemedText>
+        }
+      />
+
+      <Modal
+        transparent
+        visible={!!selectedPlant}
+        animationType="fade"
+        onRequestClose={() => setSelectedPlant(null)}
+      >
+        <Pressable
+          style={[styles.overlay, { backgroundColor: Colors[theme].tint + '33' }]}
+          onPress={() => setSelectedPlant(null)}
+        >
+          <View
+            style={[
+              styles.menu,
+              { backgroundColor: Colors[theme].background },
+            ]}
+          >
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => {
+                setSelectedPlant(null);
+                router.push({
+                  pathname: '/edit',
+                  params: { id: selectedPlant?.id },
+                });
+              }}
+            >
+              <ThemedText>Edit</ThemedText>
+            </Pressable>
+
+            <Pressable
+              style={[styles.menuItem, styles.delete]}
+              onPress={() => {
+                setSelectedPlant(null);
+                router.push({
+                  pathname: '/delete',
+                  params: { id: selectedPlant?.id },
+                });
+              }}
+            >
+              <ThemedText>Delete</ThemedText>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: { flex: 1, padding: 16 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  search: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginVertical: 12,
+  },
+  card: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 12,
     alignItems: 'center',
-    gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  dots: { fontSize: 22, paddingHorizontal: 8 },
+  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  menu: { width: 200, borderRadius: 12, padding: 8 },
+  menuItem: { padding: 12 },
+  delete: { borderTopWidth: 1, borderColor: '#eee' },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    lineHeight: 48,
+    includeFontPadding: false,
+  }
 });
