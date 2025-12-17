@@ -15,8 +15,15 @@ export default {
         },
         "android": {
             "package": "com.anonymous.plantdiary"
-        }
-
+        },
+        extra: {
+        eas: {
+        projectId: '26fe15ae-da6e-4625-8146-8e7f1a138145',
+      },
+      "plugins": [
+    "expo-barcode-scanner"
+  ]
+    },
 
     },
 };
