@@ -1,107 +1,91 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Modal,
   Pressable,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import PlantIcon, { variantFromId } from '@/components/plant-icon';
 import { Colors } from '@/constants/theme';
 import { getPlants } from '@/firebase/firestore/CRUD';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { setError, setLoading, setPlants } from '@/store/plantsSlice';
 import { Plant } from '@/types/plant';
-import { useFocusEffect } from '@react-navigation/native';
-import React from 'react';
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { theme } = useTheme();
+  const C = Colors[theme];
+  
+  // Redux hooks for state management
+  const dispatch = useAppDispatch();
+  const { plants, loading } = useAppSelector(state => state.plants);
 
-  const [plants, setPlants] = useState<Plant[]>([]);
-  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedPlant, setSelectedPlant] = useState<Plant | null>(null);
 
-
+  // Load cached plants from AsyncStorage on initial mount
   useEffect(() => {
     (async () => {
       try {
         const cached = await AsyncStorage.getItem('plants');
-        if (cached) setPlants(JSON.parse(cached));
+        if (cached) dispatch(setPlants(JSON.parse(cached)));
       } catch (err) {
         console.error('Failed to load cached plants', err);
       }
     })();
-  }, []);
+  }, [dispatch]);
 
+  // READ ALL: Fetch from Firebase and save to Redux
+  const fetchPlants = async () => {
+    if (!user || authLoading) return;
+    dispatch(setLoading(true));
+    try {
+      const freshPlants = await getPlants(user.uid);
+      dispatch(setPlants(freshPlants)); // Pushing the full list to Redux
+      AsyncStorage.setItem('plants', JSON.stringify(freshPlants)).catch(console.error);
+    } catch (err: any) {
+      dispatch(setError(err.message));
+    } finally {
+      dispatch(setLoading(false));
+    }
+  };
 
+  // Refresh plants when the screen comes into focus
   useFocusEffect(
-    React.useCallback(() => {
-      let isActive = true;
-
-      const fetchPlants = async () => {
-        if (!user) return;
-
-        setLoading(true);
-        try {
-          const freshPlants = await getPlants(user.uid);
-          if (isActive) {
-            setPlants(freshPlants);
-            AsyncStorage.setItem('plants', JSON.stringify(freshPlants)).catch(console.error);
-          }
-        } catch (err) {
-          console.error('Failed to fetch plants on focus', err);
-        } finally {
-          if (isActive) setLoading(false);
-        }
-      };
-
-      fetchPlants();
-
-      return () => {
-        isActive = false;
-      };
-    }, [user])
+    useCallback(() => { 
+      fetchPlants(); 
+    }, [user, authLoading])
   );
 
   const filteredPlants = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return plants;
-
     return plants.filter(
-      p =>
-        p.nickname.toLowerCase().includes(q) ||
-        p.species.toLowerCase().includes(q)
+      p => p.nickname.toLowerCase().includes(q) || p.species.toLowerCase().includes(q)
     );
   }, [plants, search]);
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: Colors[theme].background }]}>
-      <ThemedText style={styles.title}>My Plants</ThemedText>
-
-      {loading && <ThemedText style={{ marginBottom: 8 }}>Refreshing…</ThemedText>}
+    <View style={[styles.container, { backgroundColor: C.background }]}>
+      <Text style={[styles.title, { color: C.title }]}>My Plants</Text>
 
       <TextInput
         placeholder="Search plants..."
-        placeholderTextColor={Colors[theme].text}
+        placeholderTextColor={C.textLight}
         value={search}
         onChangeText={setSearch}
-        style={[
-          styles.search,
-          {
-            backgroundColor: Colors[theme].background,
-            borderColor: Colors[theme].tint,
-            color: Colors[theme].text,
-          },
-        ]}
+        style={[styles.search, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]}
       />
 
       <FlatList
@@ -109,54 +93,35 @@ export default function HomeScreen() {
         keyExtractor={item => item.id!}
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshing={loading}
-        onRefresh={async () => {
-          if (!user) return;
-          setLoading(true);
-          try {
-            const freshPlants = await getPlants(user.uid);
-            setPlants(freshPlants);
-            await AsyncStorage.setItem('plants', JSON.stringify(freshPlants));
-          } catch (err) {
-            console.error(err);
-          } finally {
-            setLoading(false);
-          }
-        }}
+        onRefresh={fetchPlants}
         renderItem={({ item }) => (
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: Colors[theme].accent },
-            ]}
-          >
+          <View style={[styles.card, { backgroundColor: C.card }]}>
             <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: '/plant',
-                  params: { id: item.id },
-                })
-              }
-              style={{ flex: 1 }}
+              onPress={() => router.push({ pathname: '/plant', params: { id: item.id } })}
+              style={styles.cardContent}
             >
-              <ThemedText style={{ color: Colors[theme].background }} type="subtitle">{item.nickname}</ThemedText>
-              <ThemedText style={{ color: Colors[theme].background }}>{item.species}</ThemedText>
-              <ThemedText style={{ color: Colors[theme].background }}>Watering streak: {item.streak}</ThemedText>
+              <View style={styles.cardText}>
+                <Text style={[styles.cardTitle, { color: C.title }]}>{item.nickname}</Text>
+                <Text style={[styles.cardSpecies, { color: C.subtitle }]}>{item.species}</Text>
+                <Text style={[styles.cardStreak, { color: C.subtitle }]}>
+                  Watering streak: {item.streak}
+                </Text>
+              </View>
+              <PlantIcon variant={variantFromId(item.id!)} size={72} />
             </Pressable>
 
-            <Pressable onPress={() => setSelectedPlant(item)}>
-              <ThemedText 
-                type="subtitle"
-                style={[styles.dots, { color: Colors[theme].text }]}
-              >
-                ⋮
-              </ThemedText>
+            <Pressable onPress={() => setSelectedPlant(item)} style={styles.dotsButton}>
+              <Text style={[styles.dots, { color: C.text }]}>⋮</Text>
             </Pressable>
           </View>
         )}
         ListEmptyComponent={
-          <ThemedText style={{ marginTop: 32 }}>
-            No plants found
-          </ThemedText>
+          <View style={styles.emptyContainer}>
+            <PlantIcon variant="flower" size={100} />
+            <Text style={[styles.emptyText, { color: C.textLight }]}>
+              No plants yet. Add your first plant!
+            </Text>
+          </View>
         }
       />
 
@@ -166,74 +131,62 @@ export default function HomeScreen() {
         animationType="fade"
         onRequestClose={() => setSelectedPlant(null)}
       >
-        <Pressable
-          style={[styles.overlay, { backgroundColor: Colors[theme].tint + '33' }]}
-          onPress={() => setSelectedPlant(null)}
-        >
-          <View
-            style={[
-              styles.menu,
-              { backgroundColor: Colors[theme].background },
-            ]}
-          >
+        <Pressable style={styles.overlay} onPress={() => setSelectedPlant(null)}>
+          <View style={[styles.menu, { backgroundColor: C.white }]}>
+            <Text style={[styles.menuPlantName, { color: C.textLight }]}>
+              {selectedPlant?.nickname}
+            </Text>
+            <Pressable
+              style={[styles.menuItem, { borderBottomColor: C.accent }]}
+              onPress={() => {
+                setSelectedPlant(null);
+                // Passing only ID to avoid prop drilling
+                router.push({ pathname: '/edit', params: { id: selectedPlant?.id } });
+              }}
+            >
+              <Text style={[styles.menuItemText, { color: C.text }]}>✏️  Edit plant</Text>
+            </Pressable>
             <Pressable
               style={styles.menuItem}
               onPress={() => {
                 setSelectedPlant(null);
-                router.push({
-                  pathname: '/edit',
-                  params: { id: selectedPlant?.id },
-                });
+                // Passing only ID to avoid prop drilling
+                router.push({ pathname: '/delete', params: { id: selectedPlant?.id } });
               }}
             >
-              <ThemedText>Edit</ThemedText>
-            </Pressable>
-
-            <Pressable
-              style={[styles.menuItem, styles.delete]}
-              onPress={() => {
-                setSelectedPlant(null);
-                router.push({
-                  pathname: '/delete',
-                  params: { id: selectedPlant?.id },
-                });
-              }}
-            >
-              <ThemedText>Delete</ThemedText>
+              <Text style={[styles.menuItemText, { color: C.danger }]}>🗑️  Delete plant</Text>
             </Pressable>
           </View>
         </Pressable>
       </Modal>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  search: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginVertical: 12,
-  },
+  container: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
+  title: { fontSize: 34, fontWeight: '800', marginBottom: 12, letterSpacing: -0.5 },
+  search: { borderWidth: 1.5, borderRadius: 12, padding: 13, marginBottom: 16, fontSize: 15 },
   card: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 14,
-    borderRadius: 10,
+    borderRadius: 14,
     marginBottom: 12,
+    overflow: 'hidden',
     alignItems: 'center',
+    paddingRight: 4,
   },
-  dots: { fontSize: 22, paddingHorizontal: 8 },
-  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  menu: { width: 200, borderRadius: 12, padding: 8 },
-  menuItem: { padding: 12 },
-  delete: { borderTopWidth: 1, borderColor: '#eee' },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    lineHeight: 48,
-    includeFontPadding: false,
-  }
+  cardContent: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16, paddingRight: 8 },
+  cardText: { flex: 1 },
+  cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 2 },
+  cardSpecies: { fontSize: 14, marginBottom: 4 },
+  cardStreak: { fontSize: 13 },
+  dotsButton: { paddingHorizontal: 12, paddingVertical: 16 },
+  dots: { fontSize: 22, fontWeight: '700' },
+  emptyContainer: { alignItems: 'center', marginTop: 60, gap: 16 },
+  emptyText: { fontSize: 16, textAlign: 'center' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' },
+  menu: { width: 240, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  menuPlantName: { fontSize: 12, fontWeight: '600', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  menuItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: 'transparent' },
+  menuItemText: { fontSize: 15, fontWeight: '500' },
 });

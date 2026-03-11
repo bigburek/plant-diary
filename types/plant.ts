@@ -8,4 +8,6 @@ export type Plant = {
   createdAt: number;
   userId: string;
   notificationId?: string;
+  isPrivate?: boolean;
+  localImageUri?: string;
 };

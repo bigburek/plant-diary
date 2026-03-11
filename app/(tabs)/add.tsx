@@ -1,9 +1,9 @@
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import Icon from '@/components/icon';
 import { Colors } from '@/constants/theme';
 import { db } from '@/firebase/config';
 import { createPlant } from '@/firebase/firestore/CRUD';
@@ -12,17 +12,27 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
 import { doc, updateDoc } from 'firebase/firestore';
 
+// REDUX IMPORTS
+import { useAppDispatch } from '@/store/hooks';
+import { addPlantToStore } from '@/store/plantsSlice';
+import { Plant } from '@/types/plant';
+
 export default function AddPlantScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams();
   const { theme } = useTheme();
+  const C = Colors[theme];
+  
+  // Redux dispatch
+  const dispatch = useAppDispatch();
 
   const [nickname, setNickname] = useState('');
   const [species, setSpecies] = useState('');
   const [wateringInterval, setWateringInterval] = useState('5');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
 
   useEffect(() => {
     if (params.nickname) setNickname(params.nickname as string);
@@ -30,34 +40,56 @@ export default function AddPlantScreen() {
     if (params.wateringInterval) setWateringInterval(params.wateringInterval as string);
   }, [params]);
 
+  const pickImage = async () => {
+    const p = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!p.granted) { alert('Please allow access to your photo library.'); return; }
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
+    if (!r.canceled) setImageUri(r.assets[0].uri);
+  };
+
+  const takePhoto = async () => {
+    const p = await ImagePicker.requestCameraPermissionsAsync();
+    if (!p.granted) { alert('Please allow camera access.'); return; }
+    const r = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [4, 3], quality: 0.8 });
+    if (!r.canceled) setImageUri(r.assets[0].uri);
+  };
+
   const handleAddPlant = async () => {
-    if (!user || !nickname || !species) return;
+    if (!user || !nickname.trim() || !species.trim()) { alert('Please fill in plant name and species.'); return; }
     setLoading(true);
-
     try {
-      const docRef = await createPlant(user.uid, {
-        nickname,
-        species,
-        wateringInterval: Number(wateringInterval),
-        lastWateredAt: Date.now(),
-        streak: 0,
+      const parsedInterval = parseInt(wateringInterval, 10);
+      const safeInterval = isNaN(parsedInterval) || parsedInterval <= 0 ? 5 : parsedInterval;
+
+      // 1. Prepare plant data object (without ID yet)
+      const newPlantData: Omit<Plant, 'id'> = {
+        nickname: nickname.trim(), 
+        species: species.trim(),
+        wateringInterval: safeInterval,
+        lastWateredAt: Date.now(), 
+        streak: 0, 
         createdAt: Date.now(),
-        userId: user.uid,
-        notificationId: '',
-      });
+        userId: user.uid, 
+        notificationId: '', 
+        isPrivate, 
+        localImageUri: imageUri ?? '',
+      };
 
-      const notificationId = await schedulePlantNotification(
-        docRef.id,
-        nickname,
-        Date.now(),
-        Number(wateringInterval)
-      );
-
-      await updateDoc(doc(db, 'users', user.uid, 'plants', docRef.id), {
+      // 2. CREATE: Save to Firebase
+      const docRef = await createPlant(user.uid, newPlantData);
+      
+      const notificationId = await schedulePlantNotification(docRef.id, nickname, Date.now(), safeInterval);
+      await updateDoc(doc(db, 'users', user.uid, 'plants', docRef.id), { notificationId });
+      
+      // 3. REDUX: Update global state with the new plant + generated ID
+      const plantForRedux: Plant = {
+        ...newPlantData,
+        id: docRef.id,
         notificationId,
-      });
+      };
+      dispatch(addPlantToStore(plantForRedux));
 
-      router.back();
+      router.replace('/(tabs)');
     } catch (error) {
       console.error('Failed to save plant', error);
       alert('Failed to save plant. Try again.');
@@ -67,79 +99,93 @@ export default function AddPlantScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title">Add Plant</ThemedText>
+    <ScrollView style={[styles.root, { backgroundColor: C.background }]} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <Text style={[styles.title, { color: C.title }]}>Add Plant</Text>
 
-      <TextInput
-        placeholder="Plant nickname"
-        placeholderTextColor={Colors[theme].text}
-        value={nickname}
-        onChangeText={setNickname}
-        style={[
-          styles.input,
-          {
-            backgroundColor: Colors[theme].background,
-            borderColor: Colors[theme].accent,
-            color: Colors[theme].text,
-          },
-        ]}
-      />
-      <TextInput
-        placeholder="Species (e.g. Monstera deliciosa)"
-        placeholderTextColor={Colors[theme].text}
-        value={species}
-        onChangeText={setSpecies}
-        style={[
-          styles.input,
-          {
-            backgroundColor: Colors[theme].background,
-            borderColor: Colors[theme].accent,
-            color: Colors[theme].text,
-          },
-        ]}
-      />
-      <TextInput
-        placeholder="Water every X days"
-        placeholderTextColor={Colors[theme].text}
-        keyboardType="number-pad"
-        value={wateringInterval}
-        onChangeText={setWateringInterval}
-        style={[
-          styles.input,
-          {
-            backgroundColor: Colors[theme].background,
-            borderColor: Colors[theme].accent,
-            color: Colors[theme].text,
-          },
-        ]}
-      />
-
-      <Pressable
-        style={[styles.button, { backgroundColor: Colors[theme].accent }]}
-        onPress={handleAddPlant}
-        disabled={loading}
-      >
-        <ThemedText type="defaultSemiBold" style={{ color: Colors[theme].background }}>
-          {loading ? 'Saving...' : 'Save Plant'}
-        </ThemedText>
+      <Pressable onPress={pickImage} style={[styles.imagePicker, { backgroundColor: C.card }]}>
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="cover" />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Icon name="image" size={36} color={C.textLight} strokeWidth={1.5} />
+            <Text style={[styles.imagePickerLabel, { color: C.textLight }]}>Tap to add photo</Text>
+          </View>
+        )}
       </Pressable>
-      <Pressable
-        style={[styles.button, { backgroundColor: Colors[theme].accent
 
-         }]}
-        onPress={() => router.push('/scan')}
-        disabled={loading}
-      >
-        <ThemedText type="defaultSemiBold" style={{ color: Colors[theme].background }}>
-          Scan QR Code
-        </ThemedText>
+      <View style={styles.imageButtons}>
+        <Pressable style={[styles.imageBtn, { backgroundColor: C.card }]} onPress={pickImage}>
+          <Icon name="image" size={16} color={C.text} strokeWidth={2} />
+          <Text style={[styles.imageBtnText, { color: C.text }]}>Gallery</Text>
+        </Pressable>
+        <Pressable style={[styles.imageBtn, { backgroundColor: C.card }]} onPress={takePhoto}>
+          <Icon name="camera" size={16} color={C.text} strokeWidth={2} />
+          <Text style={[styles.imageBtnText, { color: C.text }]}>Camera</Text>
+        </Pressable>
+      </View>
+
+      <Text style={[styles.label, { color: C.textLight }]}>Plant nickname</Text>
+      <TextInput placeholder="e.g. My Monstera" placeholderTextColor={C.textLight} value={nickname} onChangeText={setNickname} style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} />
+
+      <Text style={[styles.label, { color: C.textLight }]}>Species</Text>
+      <TextInput placeholder="e.g. Monstera deliciosa" placeholderTextColor={C.textLight} value={species} onChangeText={setSpecies} style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} />
+
+      <Text style={[styles.label, { color: C.textLight }]}>Water every (days)</Text>
+      <TextInput 
+        placeholder="5" 
+        placeholderTextColor={C.textLight} 
+        keyboardType="number-pad" 
+        value={wateringInterval} 
+        onChangeText={(text) => setWateringInterval(text.replace(/[^0-9]/g, ''))} 
+        style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} 
+      />
+
+      <View style={[styles.toggleRow, { backgroundColor: C.card }]}>
+        <View style={styles.toggleLeft}>
+          <View style={[styles.toggleIconBox, { backgroundColor: C.accent }]}>
+            <Icon name={isPrivate ? 'lock' : 'globe'} size={16} color={C.title} strokeWidth={2} />
+          </View>
+          <View>
+            <Text style={[styles.toggleLabel, { color: C.text }]}>{isPrivate ? 'Private' : 'Public'}</Text>
+            <Text style={[styles.toggleSub, { color: C.textLight }]}>{isPrivate ? 'Only you can see this plant' : 'Visible to others in Explore'}</Text>
+          </View>
+        </View>
+        <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: C.accent, true: C.tint }} thumbColor={C.background} />
+      </View>
+
+      <Pressable style={({ pressed }) => [styles.saveButton, { backgroundColor: C.card, opacity: pressed || loading ? 0.7 : 1 }]} onPress={handleAddPlant} disabled={loading}>
+        <Icon name={loading ? 'clock' : 'seedling'} size={18} color={C.title} strokeWidth={2} />
+        <Text style={[styles.saveButtonText, { color: C.title }]}>{loading ? 'Saving...' : 'Save Plant'}</Text>
       </Pressable>
-    </ThemedView>
+
+      <Pressable style={[styles.scanButton, { borderColor: C.tint }]} onPress={() => router.push('/scan')}>
+        <Icon name="qr" size={18} color={C.text} strokeWidth={2} />
+        <Text style={[styles.scanButtonText, { color: C.text }]}>Scan QR Code</Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, gap: 12 },
-  input: { borderWidth: 1, borderRadius: 8, padding: 12 },
-  button: { marginTop: 12, padding: 14, borderRadius: 8, alignItems: 'center' },
+  root: { flex: 1 },
+  container: { padding: 20, gap: 10, paddingBottom: 40 },
+  title: { fontSize: 34, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
+  imagePicker: { borderRadius: 16, overflow: 'hidden', height: 200 },
+  imagePreview: { width: '100%', height: '100%' },
+  imagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  imagePickerLabel: { fontSize: 14, fontWeight: '500' },
+  imageButtons: { flexDirection: 'row', gap: 10 },
+  imageBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  imageBtnText: { fontSize: 14, fontWeight: '600' },
+  label: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 },
+  input: { borderWidth: 1.5, borderRadius: 12, padding: 14, fontSize: 15 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 14, marginTop: 4 },
+  toggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  toggleIconBox: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  toggleLabel: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  toggleSub: { fontSize: 12 },
+  saveButton: { paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 8, flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  saveButtonText: { fontSize: 16, fontWeight: '700' },
+  scanButton: { paddingVertical: 14, borderRadius: 14, alignItems: 'center', borderWidth: 1.5, flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  scanButtonText: { fontSize: 15, fontWeight: '600' },
 });

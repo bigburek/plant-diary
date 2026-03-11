@@ -1,14 +1,16 @@
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import PlantIcon from '@/components/plant-icon';
+import { Colors } from '@/constants/theme';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
-import { Link, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, TextInput } from 'react-native';
 
 export default function Login() {
   const { login, user } = useAuth();
-  const { theme, colors } = useTheme();
+  const { theme } = useTheme();
+  const C = Colors[theme];
   const router = useRouter();
 
   const [email, setEmail] = useState('');
@@ -34,106 +36,78 @@ export default function Login() {
   };
 
   return (
-    <ThemedView
-      style={[
-        styles.container,
-        { backgroundColor: colors.background },
-      ]}
-    >
-      <ThemedText
-        style={[styles.title, { color: colors.text }]}
-        type="title"
-      >
-        Login
-      </ThemedText>
+    <View style={[styles.container, { backgroundColor: C.background }]}>
+      
+      <View style={styles.header}>
+        <PlantIcon variant="snake" size={80} />
+        <Text style={[styles.title, { color: C.title }]}>Welcome Back</Text>
+        <Text style={[styles.subtitle, { color: C.textLight }]}>Ready to water your plants?</Text>
+      </View>
 
-      <TextInput
-        placeholder="Email"
-        placeholderTextColor={colors.text}
-        value={email}
-        onChangeText={setEmail}
-        style={[
-          styles.input,
-          {
-            borderColor: colors.accent,
-            color: colors.text,
-            backgroundColor: colors.background,
-          },
-        ]}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
+      <View style={styles.form}>
+        <Text style={[styles.label, { color: C.textLight }]}>Email Address</Text>
+        <TextInput
+          placeholder="plantlover@example.com"
+          placeholderTextColor={C.textLight}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          style={[
+            styles.input,
+            { borderColor: C.tint, color: C.text, backgroundColor: C.background }
+          ]}
+        />
 
-      <TextInput
-        placeholder="Password"
-        placeholderTextColor={colors.text}
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        style={[
-          styles.input,
-          {
-            borderColor: colors.accent,
-            color: colors.text,
-            backgroundColor: colors.background,
-          },
-        ]}
-      />
+        <Text style={[styles.label, { color: C.textLight }]}>Password</Text>
+        <TextInput
+          placeholder="••••••••"
+          placeholderTextColor={C.textLight}
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+          style={[
+            styles.input,
+            { borderColor: C.tint, color: C.text, backgroundColor: C.background }
+          ]}
+        />
 
-          <Pressable
-      onPress={handleLogin}
-      disabled={loading}
-      style={({ pressed }) => [
-        {
-          backgroundColor: colors.link,
-          opacity: pressed ? 0.7 : 1,   
-        },
-        styles.button,
-      ]}
-    >
-      <ThemedText style={styles.buttonText}>
-        {loading ? 'Loading...' : 'Login'}
-      </ThemedText>
-    </Pressable>
+        <Pressable
+          onPress={handleLogin}
+          disabled={loading}
+          style={({ pressed }) => [
+            styles.button,
+            { backgroundColor: C.tint, opacity: pressed || loading ? 0.7 : 1 }
+          ]}
+        >
+          <Text style={styles.buttonText}>
+            {loading ? 'Logging in...' : 'Log In'}
+          </Text>
+        </Pressable>
+      </View>
 
-      <Link href="/register" style={{ marginTop: 16 }}>
-        <ThemedText style={{ color: colors.text }}>
-          Don't have an account? Register
-        </ThemedText>
-      </Link>
-    </ThemedView>
+      <View style={styles.footer}>
+        <Text style={[styles.footerText, { color: C.textLight }]}>Don't have an account? </Text>
+        <Pressable onPress={() => router.replace('/register')}>
+          <Text style={[styles.footerLink, { color: C.tint }]}>Register</Text>
+        </Pressable>
+      </View>
+
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    justifyContent: 'center',
-    gap: 16,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    lineHeight: 48,
-    includeFontPadding: false,
-  },
-  button: {
-  borderRadius: 8,
-  paddingVertical: 12,
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginTop: 8,
-},
-buttonText: {
-  color: '#fff', // or colors.text if you want dynamic contrast
-  fontWeight: 'bold',
-  fontSize: 16,
-},
-
+  container: { flex: 1, padding: 24, justifyContent: 'center' },
+  header: { alignItems: 'center', marginBottom: 40, gap: 8 },
+  title: { fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
+  subtitle: { fontSize: 16 },
+  form: { gap: 12 },
+  label: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginLeft: 4 },
+  input: { borderWidth: 1.5, borderRadius: 12, padding: 16, fontSize: 16, marginBottom: 8 },
+  button: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
+  footerText: { fontSize: 15 },
+  footerLink: { fontSize: 15, fontWeight: '700' },
 });
