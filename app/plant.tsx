@@ -1,28 +1,16 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import {
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
 import Icon from '@/components/icon';
 import PlantIcon, { variantFromId } from '@/components/plant-icon';
 import { Colors } from '@/constants/theme';
 import { updatePlant } from '@/firebase/firestore/CRUD';
-import {
-  cancelPlantNotification,
-  schedulePlantNotification,
-} from '@/lib/plantNotifications';
+import { cancelPlantNotification, schedulePlantNotification } from '@/lib/plantNotifications';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { updatePlantInStore } from '@/store/plantsSlice';
+import { useAppSelector } from '@/store/hooks';
 import { Plant } from '@/types/plant';
 
 export default function PlantScreen() {
@@ -31,10 +19,8 @@ export default function PlantScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const C = Colors[theme];
-  const dispatch = useAppDispatch();
 
-  // READ REQUIREMENT: Grab the single plant from Redux instead of refetching from Firebase
-  const plant = useAppSelector((state) => 
+  const plant = useAppSelector((state) =>
     state.plants.plants.find((p: Plant) => p.id === id)
   );
 
@@ -46,24 +32,16 @@ export default function PlantScreen() {
     setWatering(true);
     try {
       if (plant.notificationId) await cancelPlantNotification(plant.notificationId);
-      
       const now = Date.now();
       const daysSinceLast = (now - plant.lastWateredAt) / (1000 * 60 * 60 * 24);
       const newStreak = daysSinceLast >= plant.wateringInterval ? plant.streak + 1 : plant.streak;
       const newNotificationId = await schedulePlantNotification(plant.id, plant.nickname, now, plant.wateringInterval);
-      
-      const updatedData = { 
-        lastWateredAt: now, 
-        streak: newStreak, 
-        notificationId: newNotificationId 
-      };
 
-      // 1. Update Backend
-      await updatePlant(user.uid, plant.id, updatedData);
-      
-      // 2. Update Redux (Ensures Home screen & this screen stay in sync)
-      dispatch(updatePlantInStore({ id: plant.id, data: updatedData }));
-      
+      await updatePlant(user.uid, plant.id, {
+        lastWateredAt: now,
+        streak: newStreak,
+        notificationId: newNotificationId,
+      });
     } catch (err) {
       console.error('Failed to water plant', err);
       alert('Failed to water plant.');
@@ -78,7 +56,7 @@ export default function PlantScreen() {
         <PlantIcon variant="flower" size={64} />
         <Text style={[styles.loadingText, { color: C.text }]}>Plant not found</Text>
         <Pressable onPress={() => router.back()} style={{ marginTop: 20 }}>
-            <Text style={{ color: C.tint }}>Go Back</Text>
+          <Text style={{ color: C.tint }}>Go Back</Text>
         </Pressable>
       </View>
     );
@@ -106,10 +84,7 @@ export default function PlantScreen() {
               <PlantIcon variant={variantFromId(plant.id!)} size={160} />
             </View>
           )}
-          <Pressable
-            style={[styles.backButton, { backgroundColor: 'rgba(0,0,0,0.35)' }]}
-            onPress={() => router.back()}
-          >
+          <Pressable style={[styles.backButton, { backgroundColor: 'rgba(0,0,0,0.35)' }]} onPress={() => router.back()}>
             <Icon name="chevron-left" size={24} color="#fff" />
           </Pressable>
         </View>
@@ -117,59 +92,31 @@ export default function PlantScreen() {
         <View style={[styles.content, { backgroundColor: C.background }]}>
           <View style={styles.titleRow}>
             <Text style={[styles.plantName, { color: C.title }]}>{plant.nickname}</Text>
-            <Pressable
-              style={[styles.editButton, { backgroundColor: C.card }]}
-              onPress={() => router.push({ pathname: '/edit', params: { id: plant.id } })}
-            >
+            <Pressable style={[styles.editButton, { backgroundColor: C.card }]} onPress={() => router.push({ pathname: '/edit', params: { id: plant.id } })}>
               <Icon name="edit" size={20} color={C.text} />
             </Pressable>
           </View>
-
           <Text style={[styles.speciesName, { color: C.textLight }]}>{plant.species}</Text>
 
           <View style={[styles.statsCard, { backgroundColor: C.white }]}>
             <View style={styles.statRow}>
-              <View style={styles.statLeft}>
-                <Icon name="water" size={24} color={C.tint} />
-                <Text style={[styles.statLabel, { color: C.text }]}>Water Interval</Text>
-              </View>
+              <View style={styles.statLeft}><Icon name="water" size={24} color={C.tint} /><Text style={[styles.statLabel, { color: C.text }]}>Water Interval</Text></View>
               <Text style={[styles.statValue, { color: C.title }]}>{plant.wateringInterval} days</Text>
             </View>
-
             <View style={[styles.divider, { backgroundColor: C.accent }]} />
-
             <View style={styles.statRow}>
-              <View style={styles.statLeft}>
-                <Icon name="fire" size={24} color="#FF6B6B" />
-                <Text style={[styles.statLabel, { color: C.text }]}>Streak</Text>
-              </View>
+              <View style={styles.statLeft}><Icon name="fire" size={24} color="#FF6B6B" /><Text style={[styles.statLabel, { color: C.text }]}>Streak</Text></View>
               <Text style={[styles.statValue, { color: C.title }]}>{plant.streak}</Text>
             </View>
-
             <View style={[styles.divider, { backgroundColor: C.accent }]} />
-
             <View style={styles.statRow}>
-              <View style={styles.statLeft}>
-                <Icon name="clock" size={24} color={C.textLight} />
-                <Text style={[styles.statLabel, { color: C.text }]}>Next Water</Text>
-              </View>
-              <Text style={[styles.statValue, { color: C.title }]}>
-                  {nextWaterIn === 0 ? 'Today!' : `in ${nextWaterIn} days`}
-              </Text>
+              <View style={styles.statLeft}><Icon name="clock" size={24} color={C.textLight} /><Text style={[styles.statLabel, { color: C.text }]}>Next Water</Text></View>
+              <Text style={[styles.statValue, { color: C.title }]}>{nextWaterIn === 0 ? 'Today!' : `in ${nextWaterIn} days`}</Text>
             </View>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.waterButton,
-                { backgroundColor: C.card, opacity: pressed || watering ? 0.75 : 1 },
-              ]}
-              onPress={handleWater}
-              disabled={watering}
-            >
+            <Pressable style={({ pressed }) => [styles.waterButton, { backgroundColor: C.card, opacity: pressed || watering ? 0.75 : 1 }]} onPress={handleWater} disabled={watering}>
               <Icon name="water" size={20} color={C.title} />
-              <Text style={[styles.waterButtonText, { color: C.title }]}>
-                {watering ? 'Watering...' : 'Water plant'}
-              </Text>
+              <Text style={[styles.waterButtonText, { color: C.title }]}>{watering ? 'Watering...' : 'Water plant'}</Text>
             </Pressable>
 
             <Pressable onPress={() => setShowQR(true)} style={styles.qrLink}>
@@ -187,9 +134,7 @@ export default function PlantScreen() {
             <View style={{ backgroundColor: '#fff', padding: 16, borderRadius: 12 }}>
               <QRCode value={qrPayload} size={200} />
             </View>
-            <Text style={[styles.qrSubtitle, { color: C.textLight }]}>
-              Scan to add {plant.nickname} to your collection
-            </Text>
+            <Text style={[styles.qrSubtitle, { color: C.textLight }]}>Scan to add {plant.nickname} to your collection</Text>
             <Pressable style={[styles.closeQrButton, { backgroundColor: C.card }]} onPress={() => setShowQR(false)}>
               <Text style={[styles.closeQrText, { color: C.title }]}>Close</Text>
             </Pressable>

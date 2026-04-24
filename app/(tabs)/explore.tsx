@@ -1,34 +1,23 @@
 import { useFocusEffect } from '@react-navigation/native';
-import { doc, updateDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useDispatch } from 'react-redux';
 
 import Icon from '@/components/icon';
 import PlantIcon, { variantFromId } from '@/components/plant-icon';
 import { Colors } from '@/constants/theme';
-import { db } from '@/firebase/config';
-import { createPlant, getPublicPlants } from '@/firebase/firestore/CRUD';
-import { schedulePlantNotification } from '@/lib/plantNotifications';
+import { getPublicPlants } from '@/firebase/firestore/CRUD';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
-import { useAppDispatch } from '@/store/hooks';
-import { addPlantToStore } from '@/store/plantsSlice'; // Import the specific add action
+import { AppDispatch } from '@/store';
+import { addPlant } from '@/store/plantsSlice';
 import { Plant } from '@/types/plant';
 
 export default function ExploreScreen() {
   const { theme } = useTheme();
   const C = Colors[theme];
   const { user } = useAuth();
-  const dispatch = useAppDispatch();
+  const dispatch = useDispatch<AppDispatch>();
 
   const [publicPlants, setPublicPlants] = useState<Plant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,57 +38,29 @@ export default function ExploreScreen() {
     }
   }, [user]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchPlants();
-    }, [fetchPlants])
-  );
+  useFocusEffect(useCallback(() => { fetchPlants(); }, [fetchPlants]));
 
   const handleAddToMyPlants = async () => {
     if (!user || !selected) return;
     setAdding(true);
     try {
       const now = Date.now();
-      
-      // 1. Create the new plant in Firestore for the current user
-      const docRef = await createPlant(user.uid, {
-        nickname: selected.nickname,
-        species: selected.species,
-        wateringInterval: selected.wateringInterval,
-        lastWateredAt: now,
-        streak: 0,
-        createdAt: now,
-        userId: user.uid,
-        notificationId: '',
-        isPrivate: false,
-        localImageUri: '',
-      });
 
-      // 2. Setup notifications for the new local plant
-      const notificationId = await schedulePlantNotification(
-        docRef.id,
-        selected.nickname,
-        now,
-        selected.wateringInterval
-      );
-      await updateDoc(doc(db, 'users', user.uid, 'plants', docRef.id), { notificationId });
-
-      // 3. Update REDUX: Add the new plant to the global state
-      const newPlant: Plant = {
-        id: docRef.id,
-        nickname: selected.nickname,
-        species: selected.species,
-        wateringInterval: selected.wateringInterval,
-        lastWateredAt: now,
-        streak: 0,
-        createdAt: now,
+      await dispatch(addPlant({
         userId: user.uid,
-        notificationId,
-        isPrivate: false,
-        localImageUri: '',
-      };
-      
-      dispatch(addPlantToStore(newPlant));
+        plantData: {
+          nickname: selected.nickname,
+          species: selected.species,
+          wateringInterval: selected.wateringInterval,
+          lastWateredAt: now,
+          streak: 0,
+          createdAt: now,
+          userId: user.uid,
+          notificationId: '',
+          isPrivate: false,
+          localImageUri: '',
+        },
+      }));
 
       setSelected(null);
       alert(`"${selected.nickname}" added to your collection!`);
@@ -113,26 +74,16 @@ export default function ExploreScreen() {
 
   const filtered = publicPlants.filter((p) => {
     const q = search.toLowerCase();
-    return (
-      q === '' ||
-      p.nickname.toLowerCase().includes(q) ||
-      p.species.toLowerCase().includes(q)
-    );
+    return q === '' || p.nickname.toLowerCase().includes(q) || p.species.toLowerCase().includes(q);
   });
 
   const getDaysUntilWater = (p: Plant) =>
-    Math.max(
-      0,
-      p.wateringInterval -
-        Math.floor((Date.now() - p.lastWateredAt) / (1000 * 60 * 60 * 24))
-    );
+    Math.max(0, p.wateringInterval - Math.floor((Date.now() - p.lastWateredAt) / (1000 * 60 * 60 * 24)));
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <Text style={[styles.title, { color: C.title }]}>Explore</Text>
-      <Text style={[styles.subtitle, { color: C.textLight }]}>
-        Public plants from the community
-      </Text>
+      <Text style={[styles.subtitle, { color: C.textLight }]}>Public plants from the community</Text>
 
       <View style={[styles.searchContainer, { borderColor: C.tint }]}>
         <Icon name="search" size={20} color={C.textLight} />
@@ -148,9 +99,7 @@ export default function ExploreScreen() {
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={C.tint} />
-          <Text style={[styles.loadingText, { color: C.textLight }]}>
-            Loading community plants...
-          </Text>
+          <Text style={[styles.loadingText, { color: C.textLight }]}>Loading community plants...</Text>
         </View>
       ) : (
         <FlatList
@@ -159,33 +108,22 @@ export default function ExploreScreen() {
           numColumns={2}
           columnWrapperStyle={styles.row}
           contentContainerStyle={styles.grid}
-          refreshControl={
-            <RefreshControl refreshing={loading} onRefresh={fetchPlants} tintColor={C.tint} />
-          }
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPlants} tintColor={C.tint} />}
           renderItem={({ item }) => (
             <Pressable
-              style={({ pressed }) => [
-                styles.card,
-                { backgroundColor: C.card, opacity: pressed ? 0.85 : 1 },
-              ]}
+              style={({ pressed }) => [styles.card, { backgroundColor: C.card, opacity: pressed ? 0.85 : 1 }]}
               onPress={() => setSelected(item)}
             >
               <View style={[styles.cardIconBox, { backgroundColor: C.accent }]}>
                 <PlantIcon variant={variantFromId(item.id!)} size={72} />
               </View>
               <View style={styles.cardBody}>
-                <Text style={[styles.cardName, { color: C.title }]} numberOfLines={1}>
-                  {item.nickname}
-                </Text>
-                <Text style={[styles.cardSpecies, { color: C.textLight }]} numberOfLines={1}>
-                  {item.species}
-                </Text>
+                <Text style={[styles.cardName, { color: C.title }]} numberOfLines={1}>{item.nickname}</Text>
+                <Text style={[styles.cardSpecies, { color: C.textLight }]} numberOfLines={1}>{item.species}</Text>
                 <View style={styles.cardBadges}>
                   <View style={[styles.badge, { backgroundColor: C.background }]}>
                     <Icon name="water" size={12} color={C.tint} />
-                    <Text style={[styles.badgeText, { color: C.title }]}>
-                      {item.wateringInterval}d
-                    </Text>
+                    <Text style={[styles.badgeText, { color: C.title }]}>{item.wateringInterval}d</Text>
                   </View>
                   <View style={[styles.badge, { backgroundColor: C.background }]}>
                     <Icon name="fire" size={12} color="#FFA500" />
@@ -199,15 +137,12 @@ export default function ExploreScreen() {
             <View style={styles.center}>
               <PlantIcon variant="tropical" size={100} />
               <Text style={[styles.emptyTitle, { color: C.title }]}>No public plants yet</Text>
-              <Text style={[styles.emptyText, { color: C.textLight }]}>
-                Be the first! Make one of your plants public from the Add or Edit page.
-              </Text>
+              <Text style={[styles.emptyText, { color: C.textLight }]}>Be the first! Make one of your plants public from the Add or Edit page.</Text>
             </View>
           }
         />
       )}
 
-      {/* Detail Popup Overlay */}
       {selected && (
         <View style={styles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setSelected(null)} />
@@ -215,16 +150,12 @@ export default function ExploreScreen() {
             <View style={[styles.popupIconBox, { backgroundColor: C.card }]}>
               <PlantIcon variant={variantFromId(selected.id!)} size={80} />
             </View>
-
             <Text style={[styles.popupName, { color: C.title }]}>{selected.nickname}</Text>
             <Text style={[styles.popupSpecies, { color: C.textLight }]}>{selected.species}</Text>
-
             <View style={styles.statsRow}>
               <View style={[styles.statBox, { backgroundColor: C.card }]}>
                 <Icon name="water" size={24} color={C.tint} />
-                <Text style={[styles.statValue, { color: C.title }]}>
-                  {selected.wateringInterval}
-                </Text>
+                <Text style={[styles.statValue, { color: C.title }]}>{selected.wateringInterval}</Text>
                 <Text style={[styles.statLabel, { color: C.textLight }]}>days</Text>
               </View>
               <View style={[styles.statBox, { backgroundColor: C.card }]}>
@@ -234,30 +165,18 @@ export default function ExploreScreen() {
               </View>
               <View style={[styles.statBox, { backgroundColor: C.card }]}>
                 <Icon name="clock" size={24} color={C.textLight} />
-                <Text style={[styles.statValue, { color: C.title }]}>
-                  {getDaysUntilWater(selected)}
-                </Text>
+                <Text style={[styles.statValue, { color: C.title }]}>{getDaysUntilWater(selected)}</Text>
                 <Text style={[styles.statLabel, { color: C.textLight }]}>next</Text>
               </View>
             </View>
-
-            <Text style={[styles.popupHint, { color: C.textLight }]}>
-              Add a copy of this plant to your collection?
-            </Text>
-
+            <Text style={[styles.popupHint, { color: C.textLight }]}>Add a copy of this plant to your collection?</Text>
             <Pressable
-              style={({ pressed }) => [
-                styles.addBtn,
-                { backgroundColor: C.card, opacity: pressed || adding ? 0.7 : 1 },
-              ]}
+              style={({ pressed }) => [styles.addBtn, { backgroundColor: C.card, opacity: pressed || adding ? 0.7 : 1 }]}
               onPress={handleAddToMyPlants}
               disabled={adding}
             >
-              <Text style={[styles.addBtnText, { color: C.title }]}>
-                {adding ? 'Adding...' : 'Add to My Plants'}
-              </Text>
+              <Text style={[styles.addBtnText, { color: C.title }]}>{adding ? 'Adding...' : 'Add to My Plants'}</Text>
             </Pressable>
-
             <Pressable onPress={() => setSelected(null)} style={styles.cancelBtn}>
               <Text style={[styles.cancelBtnText, { color: C.textLight }]}>Cancel</Text>
             </Pressable>
@@ -272,93 +191,33 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
   title: { fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
   subtitle: { fontSize: 14, marginBottom: 16, marginTop: 4 },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    marginBottom: 16,
-    backgroundColor: 'transparent',
-  },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, marginBottom: 16 },
   searchInput: { flex: 1, paddingVertical: 13, paddingLeft: 8, fontSize: 15 },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 60,
-    gap: 12,
-  },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: 12 },
   loadingText: { fontSize: 14 },
   row: { gap: 12 },
   grid: { gap: 12, paddingBottom: 32 },
   card: { flex: 1, borderRadius: 14, overflow: 'hidden' },
-  cardIconBox: {
-    width: '100%',
-    height: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  cardIconBox: { width: '100%', height: 110, alignItems: 'center', justifyContent: 'center' },
   cardBody: { padding: 12, gap: 3 },
   cardName: { fontSize: 14, fontWeight: '700' },
   cardSpecies: { fontSize: 12, fontStyle: 'italic' },
   cardBadges: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
+  badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4 },
   badgeText: { fontSize: 11, fontWeight: '600' },
   emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  emptyText: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    maxWidth: 260,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-    zIndex: 100,
-  },
-  popup: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    gap: 10,
-  },
-  popupIconBox: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
+  emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 20, maxWidth: 260 },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end', zIndex: 100 },
+  popup: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, alignItems: 'center', gap: 10 },
+  popupIconBox: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   popupName: { fontSize: 22, fontWeight: '800' },
   popupSpecies: { fontSize: 14, fontStyle: 'italic' },
   statsRow: { flexDirection: 'row', gap: 10, width: '100%', marginTop: 4 },
-  statBox: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    gap: 4,
-  },
+  statBox: { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center', gap: 4 },
   statValue: { fontSize: 16, fontWeight: '800' },
   statLabel: { fontSize: 11 },
   popupHint: { fontSize: 13, textAlign: 'center', marginTop: 4 },
-  addBtn: {
-    width: '100%',
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
+  addBtn: { width: '100%', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
   addBtnText: { fontSize: 16, fontWeight: '700' },
   cancelBtn: { paddingVertical: 8 },
   cancelBtnText: { fontSize: 15 },

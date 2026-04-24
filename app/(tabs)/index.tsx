@@ -1,7 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Modal,
@@ -11,70 +9,55 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useDispatch, useSelector } from 'react-redux';
 
 import PlantIcon, { variantFromId } from '@/components/plant-icon';
 import { Colors } from '@/constants/theme';
-import { getPlants } from '@/firebase/firestore/CRUD';
-import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { setError, setLoading, setPlants } from '@/store/plantsSlice';
+import { AppDispatch, RootState } from '@/store';
+import { clearPlants, startPlantsListener } from '@/store/plantsSlice';
 import { Plant } from '@/types/plant';
+import { useAuth } from '@/providers/AuthProvider';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/firebase/config';
 
 export default function HomeScreen() {
-  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { theme } = useTheme();
   const C = Colors[theme];
-  
-  // Redux hooks for state management
-  const dispatch = useAppDispatch();
-  const { plants, loading } = useAppSelector(state => state.plants);
+  const dispatch = useDispatch<AppDispatch>();
+  const { user } = useAuth();
+
+  const { plants, loading } = useSelector((state: RootState) => state.plants);
 
   const [search, setSearch] = useState('');
   const [selectedPlant, setSelectedPlant] = useState<Plant | null>(null);
 
-  // Load cached plants from AsyncStorage on initial mount
+  // Matches professor's pattern exactly:
+  // dispatch(startPlantsListener()) starts the onSnapshot listener.
+  // The returned value IS the unsubscribe function — we clean it up on unmount.
+  // Also clears the Redux store on unmount so the next user starts fresh.
   useEffect(() => {
-    (async () => {
-      try {
-        const cached = await AsyncStorage.getItem('plants');
-        if (cached) dispatch(setPlants(JSON.parse(cached)));
-      } catch (err) {
-        console.error('Failed to load cached plants', err);
-      }
-    })();
-  }, [dispatch]);
-
-  // READ ALL: Fetch from Firebase and save to Redux
-  const fetchPlants = async () => {
-    if (!user || authLoading) return;
-    dispatch(setLoading(true));
-    try {
-      const freshPlants = await getPlants(user.uid);
-      dispatch(setPlants(freshPlants)); // Pushing the full list to Redux
-      AsyncStorage.setItem('plants', JSON.stringify(freshPlants)).catch(console.error);
-    } catch (err: any) {
-      dispatch(setError(err.message));
-    } finally {
-      dispatch(setLoading(false));
-    }
-  };
-
-  // Refresh plants when the screen comes into focus
-  useFocusEffect(
-    useCallback(() => { 
-      fetchPlants(); 
-    }, [user, authLoading])
-  );
+    const unsubscribe = dispatch(startPlantsListener());
+    return () => {
+      if (unsubscribe) unsubscribe();
+      dispatch(clearPlants());
+    };
+  }, []);
 
   const filteredPlants = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return plants;
-    return plants.filter(
-      p => p.nickname.toLowerCase().includes(q) || p.species.toLowerCase().includes(q)
+    return plants.filter((p: Plant) =>
+      p.nickname.toLowerCase().includes(q) ||
+      p.species.toLowerCase().includes(q)
     );
   }, [plants, search]);
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    router.replace('/login');
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -90,11 +73,10 @@ export default function HomeScreen() {
 
       <FlatList
         data={filteredPlants}
-        keyExtractor={item => item.id!}
+        keyExtractor={(item: Plant) => item.id!}
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshing={loading}
-        onRefresh={fetchPlants}
-        renderItem={({ item }) => (
+        renderItem={({ item }: { item: Plant }) => (
           <View style={[styles.card, { backgroundColor: C.card }]}>
             <Pressable
               onPress={() => router.push({ pathname: '/plant', params: { id: item.id } })}
@@ -140,21 +122,19 @@ export default function HomeScreen() {
               style={[styles.menuItem, { borderBottomColor: C.accent }]}
               onPress={() => {
                 setSelectedPlant(null);
-                // Passing only ID to avoid prop drilling
                 router.push({ pathname: '/edit', params: { id: selectedPlant?.id } });
               }}
             >
-              <Text style={[styles.menuItemText, { color: C.text }]}>✏️  Edit plant</Text>
+              <Text style={[styles.menuItemText, { color: C.text }]}>✏️ Edit plant</Text>
             </Pressable>
             <Pressable
               style={styles.menuItem}
               onPress={() => {
                 setSelectedPlant(null);
-                // Passing only ID to avoid prop drilling
                 router.push({ pathname: '/delete', params: { id: selectedPlant?.id } });
               }}
             >
-              <Text style={[styles.menuItemText, { color: C.danger }]}>🗑️  Delete plant</Text>
+              <Text style={[styles.menuItemText, { color: C.danger }]}>🗑️ Delete plant</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -167,14 +147,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
   title: { fontSize: 34, fontWeight: '800', marginBottom: 12, letterSpacing: -0.5 },
   search: { borderWidth: 1.5, borderRadius: 12, padding: 13, marginBottom: 16, fontSize: 15 },
-  card: {
-    flexDirection: 'row',
-    borderRadius: 14,
-    marginBottom: 12,
-    overflow: 'hidden',
-    alignItems: 'center',
-    paddingRight: 4,
-  },
+  card: { flexDirection: 'row', borderRadius: 14, marginBottom: 12, overflow: 'hidden', alignItems: 'center', paddingRight: 4 },
   cardContent: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16, paddingRight: 8 },
   cardText: { flex: 1 },
   cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 2 },

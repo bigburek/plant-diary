@@ -1,58 +1,69 @@
+import { db } from '@/firebase/config';
+import { createPlant, deletePlant, getAllPlants } from '@/firebase/firestore/CRUD';
+import { schedulePlantNotification } from '@/lib/plantNotifications';
 import { Plant } from '@/types/plant';
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { doc, updateDoc } from 'firebase/firestore';
 
-interface PlantsState {
-  plants: Plant[];
-  loading: boolean;
-  error: string | null;
-}
+export const startPlantsListener = () => (dispatch: any) => {
+  const unsubscribe = getAllPlants((data) => {
+    dispatch(setPlants(data));
+  });
+  return unsubscribe;
+};
 
-const initialState: PlantsState = {
-  plants: [],
-  loading: false,
-  error: null,
-}
+export const addPlant = createAsyncThunk(
+  'plants/addPlant',
+  async ({ userId, plantData }: { userId: string; plantData: Omit<Plant, 'id'> }) => {
+    const docRef = await createPlant(userId, plantData);
+    const notificationId = await schedulePlantNotification(
+      docRef.id,
+      plantData.nickname,
+      plantData.lastWateredAt,
+      plantData.wateringInterval
+    );
+    await updateDoc(doc(db, 'users', userId, 'plants', docRef.id), { notificationId });
+  }
+);
+
+
+export const removePlant = createAsyncThunk(
+  'plants/removePlant',
+  async ({ userId, plantId }: { userId: string; plantId: string }) => {
+    await deletePlant(userId, plantId);
+  }
+);
+
 
 const plantsSlice = createSlice({
   name: 'plants',
-  initialState,
+  initialState: {
+    plants: [] as Plant[],
+    loading: true,
+    error: null as string | null,
+  },
   reducers: {
-    // Read All
+   
     setPlants(state, action: PayloadAction<Plant[]>) {
       state.plants = action.payload;
+      state.loading = false;
     },
-    // Create
-    addPlantToStore(state, action: PayloadAction<Plant>) {
-      state.plants.push(action.payload);
+    clearPlants(state) {
+      state.plants = [];
+      state.loading = true;
+      state.error = null;
     },
-    // Update
-    updatePlantInStore(state, action: PayloadAction<{ id: string; data: Partial<Plant> }>) {
-      const idx = state.plants.findIndex(p => p.id === action.payload.id);
-      if (idx !== -1) {
-        state.plants[idx] = { ...state.plants[idx], ...action.payload.data };
-      }
-    },
-    // Delete
-    removePlantFromStore(state, action: PayloadAction<string>) {
-      state.plants = state.plants.filter(p => p.id !== action.payload);
-    },
-    // UI States
-    setLoading(state, action: PayloadAction<boolean>) {
-      state.loading = action.payload;
-    },
-    setError(state, action: PayloadAction<string | null>) {
-      state.error = action.payload;
-    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(addPlant.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Failed to add plant';
+      })
+      .addCase(removePlant.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Failed to remove plant';
+      });
   },
 });
 
-export const {
-  setPlants,
-  addPlantToStore,
-  setLoading,
-  setError,
-  updatePlantInStore,
-  removePlantFromStore,
-} = plantsSlice.actions;
-
+export const { setPlants, clearPlants } = plantsSlice.actions;
 export default plantsSlice.reducer;

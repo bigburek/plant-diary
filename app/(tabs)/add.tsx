@@ -2,20 +2,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useDispatch } from 'react-redux';
 
 import Icon from '@/components/icon';
 import { Colors } from '@/constants/theme';
-import { db } from '@/firebase/config';
-import { createPlant } from '@/firebase/firestore/CRUD';
-import { schedulePlantNotification } from '@/lib/plantNotifications';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
-import { doc, updateDoc } from 'firebase/firestore';
+import { AppDispatch } from '@/store';
+import { addPlant } from '@/store/plantsSlice';
 
-// REDUX IMPORTS
-import { useAppDispatch } from '@/store/hooks';
-import { addPlantToStore } from '@/store/plantsSlice';
-import { Plant } from '@/types/plant';
 
 export default function AddPlantScreen() {
   const { user } = useAuth();
@@ -23,9 +18,7 @@ export default function AddPlantScreen() {
   const params = useLocalSearchParams();
   const { theme } = useTheme();
   const C = Colors[theme];
-  
-  // Redux dispatch
-  const dispatch = useAppDispatch();
+  const dispatch = useDispatch<AppDispatch>();
 
   const [nickname, setNickname] = useState('');
   const [species, setSpecies] = useState('');
@@ -61,34 +54,24 @@ export default function AddPlantScreen() {
       const parsedInterval = parseInt(wateringInterval, 10);
       const safeInterval = isNaN(parsedInterval) || parsedInterval <= 0 ? 5 : parsedInterval;
 
-      // 1. Prepare plant data object (without ID yet)
-      const newPlantData: Omit<Plant, 'id'> = {
-        nickname: nickname.trim(), 
-        species: species.trim(),
-        wateringInterval: safeInterval,
-        lastWateredAt: Date.now(), 
-        streak: 0, 
-        createdAt: Date.now(),
-        userId: user.uid, 
-        notificationId: '', 
-        isPrivate, 
-        localImageUri: imageUri ?? '',
-      };
+      await dispatch(addPlant({
+        userId: user.uid,
+        plantData: {
+          nickname: nickname.trim(),
+          species: species.trim(),
+          wateringInterval: safeInterval,
+          lastWateredAt: Date.now(),
+          streak: 0,
+          createdAt: Date.now(),
+          userId: user.uid,
+          notificationId: '',
+          isPrivate,
+          localImageUri: imageUri ?? '',
+        },
+      }));
 
-      // 2. CREATE: Save to Firebase
-      const docRef = await createPlant(user.uid, newPlantData);
-      
-      const notificationId = await schedulePlantNotification(docRef.id, nickname, Date.now(), safeInterval);
-      await updateDoc(doc(db, 'users', user.uid, 'plants', docRef.id), { notificationId });
-      
-      // 3. REDUX: Update global state with the new plant + generated ID
-      const plantForRedux: Plant = {
-        ...newPlantData,
-        id: docRef.id,
-        notificationId,
-      };
-      dispatch(addPlantToStore(plantForRedux));
-
+      setNickname(''); setSpecies(''); setWateringInterval('5');
+      setIsPrivate(false); setImageUri(null);
       router.replace('/(tabs)');
     } catch (error) {
       console.error('Failed to save plant', error);
@@ -131,14 +114,7 @@ export default function AddPlantScreen() {
       <TextInput placeholder="e.g. Monstera deliciosa" placeholderTextColor={C.textLight} value={species} onChangeText={setSpecies} style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} />
 
       <Text style={[styles.label, { color: C.textLight }]}>Water every (days)</Text>
-      <TextInput 
-        placeholder="5" 
-        placeholderTextColor={C.textLight} 
-        keyboardType="number-pad" 
-        value={wateringInterval} 
-        onChangeText={(text) => setWateringInterval(text.replace(/[^0-9]/g, ''))} 
-        style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} 
-      />
+      <TextInput placeholder="5" placeholderTextColor={C.textLight} keyboardType="number-pad" value={wateringInterval} onChangeText={(t) => setWateringInterval(t.replace(/[^0-9]/g, ''))} style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} />
 
       <View style={[styles.toggleRow, { backgroundColor: C.card }]}>
         <View style={styles.toggleLeft}>

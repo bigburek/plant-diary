@@ -1,4 +1,5 @@
 import { auth } from '@/firebase/config';
+import { setupNotifications } from '@/lib/notifications';
 import {
   User,
   createUserWithEmailAndPassword,
@@ -7,8 +8,6 @@ import {
   signOut,
 } from 'firebase/auth';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-
-import { setupNotifications } from '@/lib/notifications';
 
 interface AuthContextType {
   user: User | null;

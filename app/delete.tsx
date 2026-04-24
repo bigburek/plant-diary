@@ -1,15 +1,16 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useDispatch } from 'react-redux';
 
 import Icon from '@/components/icon';
 import PlantIcon from '@/components/plant-icon';
 import { Colors } from '@/constants/theme';
-import { deletePlant } from '@/firebase/firestore/CRUD';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
-import { useAppDispatch } from '@/store/hooks';
-import { removePlantFromStore } from '@/store/plantsSlice';
+import { AppDispatch } from '@/store';
+import { removePlant } from '@/store/plantsSlice';
+
 
 export default function DeleteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -17,21 +18,15 @@ export default function DeleteScreen() {
   const { theme } = useTheme();
   const C = Colors[theme];
   const router = useRouter();
-  
-  // Redux hook initialized for the Delete requirement
-  const dispatch = useAppDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const [loading, setLoading] = useState(false);
 
   const handleDelete = async () => {
     if (!user || !id) return;
     setLoading(true);
     try {
-      // 1. Delete from Firebase
-      await deletePlant(user.uid, id);
-      
-      // 2. Delete from Redux (Fulfills the "Delete" requirement!)
-      dispatch(removePlantFromStore(id));
-      
+  
+      await dispatch(removePlant({ userId: user.uid, plantId: id }));
       router.replace('/(tabs)');
     } catch (err) {
       console.error('Failed to delete plant', err);
@@ -48,21 +43,14 @@ export default function DeleteScreen() {
       <Text style={[styles.body, { color: C.textLight }]}>
         This action cannot be undone. Your plant and all its data will be permanently removed.
       </Text>
-
       <Pressable
-        style={({ pressed }) => [
-          styles.deleteButton, 
-          { backgroundColor: C.danger, opacity: pressed || loading ? 0.75 : 1 }
-        ]}
+        style={({ pressed }) => [styles.deleteButton, { backgroundColor: C.danger, opacity: pressed || loading ? 0.75 : 1 }]}
         onPress={handleDelete}
         disabled={loading}
       >
         {!loading && <Icon name="trash" size={20} color="#fff" />}
-        <Text style={styles.deleteButtonText}>
-          {loading ? 'Deleting...' : 'Yes, delete plant'}
-        </Text>
+        <Text style={styles.deleteButtonText}>{loading ? 'Deleting...' : 'Yes, delete plant'}</Text>
       </Pressable>
-
       <Pressable style={[styles.cancelButton, { backgroundColor: C.card }]} onPress={() => router.back()}>
         <Text style={[styles.cancelText, { color: C.title }]}>Keep plant</Text>
       </Pressable>

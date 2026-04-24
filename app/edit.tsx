@@ -1,16 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import Icon from '@/components/icon';
 import { Colors } from '@/constants/theme';
@@ -18,8 +9,7 @@ import { updatePlant } from '@/firebase/firestore/CRUD';
 import { cancelPlantNotification, schedulePlantNotification } from '@/lib/plantNotifications';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
-import { useAppDispatch, useAppSelector } from '@/store/hooks'; // Added useAppSelector
-import { updatePlantInStore } from '@/store/plantsSlice';
+import { useAppSelector } from '@/store/hooks';
 import { Plant } from '@/types/plant';
 
 export default function EditPlantScreen() {
@@ -28,10 +18,8 @@ export default function EditPlantScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const C = Colors[theme];
-  const dispatch = useAppDispatch();
 
-  // OPTIMIZATION: Pull plant directly from Redux Store
-  const plantFromStore = useAppSelector((state) => 
+  const plantFromStore = useAppSelector((state) =>
     state.plants.plants.find((p: Plant) => p.id === id)
   );
 
@@ -42,7 +30,6 @@ export default function EditPlantScreen() {
   const [isPrivate, setIsPrivate] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
 
-  // Initialize form with Redux data
   useEffect(() => {
     if (plantFromStore) {
       setNickname(plantFromStore.nickname);
@@ -71,25 +58,18 @@ export default function EditPlantScreen() {
     if (!user || !id || !plantFromStore) return;
     setSaving(true);
     try {
-      // 1. Manage Notifications
       if (plantFromStore.notificationId) await cancelPlantNotification(plantFromStore.notificationId);
       const newNotificationId = await schedulePlantNotification(id, nickname, plantFromStore.lastWateredAt, Number(wateringInterval));
-      
-      const updates: Partial<Plant> = {
-        nickname: nickname.trim(), 
+
+      await updatePlant(user.uid, id, {
+        nickname: nickname.trim(),
         species: species.trim(),
         wateringInterval: Number(wateringInterval),
-        notificationId: newNotificationId, 
-        isPrivate, 
+        notificationId: newNotificationId,
+        isPrivate,
         localImageUri: imageUri ?? '',
-      };
+      });
 
-      // 2. UPDATE: Firebase
-      await updatePlant(user.uid, id, updates);
-      
-      // 3. UPDATE: Redux Store (Fulfills the 'Update' requirement)
-      dispatch(updatePlantInStore({ id, data: updates }));
-      
       router.back();
     } catch (err) {
       console.error('Update failed:', err);
@@ -113,7 +93,6 @@ export default function EditPlantScreen() {
         <Icon name="chevron-left" size={20} color={C.text} />
         <Text style={[styles.backBtnText, { color: C.text }]}>Back</Text>
       </Pressable>
-      
       <Text style={[styles.title, { color: C.title }]}>Edit Plant</Text>
 
       <Pressable onPress={pickImage} style={[styles.imagePicker, { backgroundColor: C.card }]}>
@@ -129,17 +108,14 @@ export default function EditPlantScreen() {
 
       <View style={styles.imageButtons}>
         <Pressable style={[styles.imageBtn, { backgroundColor: C.card }]} onPress={pickImage}>
-          <Icon name="image" size={16} color={C.text} />
-          <Text style={[styles.imageBtnText, { color: C.text }]}>Gallery</Text>
+          <Icon name="image" size={16} color={C.text} /><Text style={[styles.imageBtnText, { color: C.text }]}>Gallery</Text>
         </Pressable>
         <Pressable style={[styles.imageBtn, { backgroundColor: C.card }]} onPress={takePhoto}>
-          <Icon name="camera" size={16} color={C.text} />
-          <Text style={[styles.imageBtnText, { color: C.text }]}>Camera</Text>
+          <Icon name="camera" size={16} color={C.text} /><Text style={[styles.imageBtnText, { color: C.text }]}>Camera</Text>
         </Pressable>
         {imageUri && (
           <Pressable style={[styles.imageBtn, { backgroundColor: C.card }]} onPress={() => setImageUri(null)}>
-            <Icon name="trash" size={16} color={C.danger} />
-            <Text style={[styles.imageBtnText, { color: C.danger }]}>Remove</Text>
+            <Icon name="trash" size={16} color={C.danger} /><Text style={[styles.imageBtnText, { color: C.danger }]}>Remove</Text>
           </Pressable>
         )}
       </View>
@@ -157,13 +133,9 @@ export default function EditPlantScreen() {
         <View style={styles.toggleTextContainer}>
           <View style={styles.toggleHeader}>
             <Icon name={isPrivate ? 'lock' : 'globe'} size={16} color={C.text} />
-            <Text style={[styles.toggleLabel, { color: C.text }]}>
-              {isPrivate ? 'Private' : 'Public'}
-            </Text>
+            <Text style={[styles.toggleLabel, { color: C.text }]}>{isPrivate ? 'Private' : 'Public'}</Text>
           </View>
-          <Text style={[styles.toggleSub, { color: C.textLight }]}>
-            {isPrivate ? 'Only you can see this plant' : 'Visible to others in Explore'}
-          </Text>
+          <Text style={[styles.toggleSub, { color: C.textLight }]}>{isPrivate ? 'Only you can see this plant' : 'Visible to others in Explore'}</Text>
         </View>
         <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: C.accent, true: C.tint }} thumbColor={C.background} />
       </View>

@@ -44,7 +44,6 @@ export default function ScanPlantScreen() {
         },
       });
       
-      // Reset the scan lock after a brief delay
       setTimeout(() => setScanned(false), 1000);
     } catch {
       console.warn('Invalid QR code');
@@ -85,10 +84,8 @@ export default function ScanPlantScreen() {
         onBarcodeScanned={handleScan}
       />
       
-      {/* Dark Translucent Overlay */}
       <View style={styles.overlay}>
         
-        {/* Header with Back Button */}
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Icon name="chevron-left" size={24} color="#fff" />
@@ -96,10 +93,8 @@ export default function ScanPlantScreen() {
           </Pressable>
         </View>
 
-        {/* Scanner Target Area */}
         <View style={styles.targetContainer}>
           <View style={styles.targetBox}>
-            {/* Corner Markers */}
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
             <View style={[styles.corner, styles.bottomLeft]} />
@@ -158,7 +153,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 40,
     height: 40,
-    borderColor: '#4CAF50', // A nice green accent for the scanner
+    borderColor: '#4CAF50', 
     borderWidth: 4,
   },
   topLeft: { top: 0, left: 0, borderBottomWidth: 0, borderRightWidth: 0, borderTopLeftRadius: 16 },

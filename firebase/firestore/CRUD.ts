@@ -6,31 +6,53 @@ import {
   doc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   updateDoc,
 } from 'firebase/firestore';
 
-import { db } from '@/firebase/config';
+import { auth, db } from '@/firebase/config';
 import { Plant } from '@/types/plant';
 
-export async function createPlant(userId: string, data: Omit<Plant, 'id'>) {
-  return await addDoc(collection(db, 'users', userId, 'plants'), data);
-}
-
-export async function getPlants(userId: string): Promise<Plant[]> {
+export const getAllPlants = (callback: (plants: Plant[]) => void) => {
+  const uid = auth.currentUser!.uid;
   const q = query(
-    collection(db, 'users', userId, 'plants'),
+    collection(db, 'users', uid, 'plants'),
     orderBy('createdAt', 'desc')
   );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(docSnap => ({
-    id: docSnap.id,
-    ...(docSnap.data() as Omit<Plant, 'id'>),
-  }));
-}
 
-export async function getPublicPlants(excludeUserId: string): Promise<Plant[]> {
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const data: Plant[] = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...(docSnap.data() as Omit<Plant, 'id'>),
+    }));
+    callback(data);
+  });
+
+  return unsubscribe;
+};
+
+// CREATE
+export const createPlant = async (userId: string, data: Omit<Plant, 'id'>) => {
+  const ref = collection(db, 'users', userId, 'plants');
+  return await addDoc(ref, data);
+};
+
+// UPDATE 
+export const updatePlant = async (userId: string, plantId: string, data: Partial<Plant>) => {
+  const ref = doc(db, 'users', userId, 'plants', plantId);
+  return await updateDoc(ref, data);
+};
+
+// DELETE
+export const deletePlant = async (userId: string, plantId: string) => {
+  const ref = doc(db, 'users', userId, 'plants', plantId);
+  return await deleteDoc(ref);
+};
+
+// Public plants 
+export const getPublicPlants = async (excludeUserId: string): Promise<Plant[]> => {
   const q = query(
     collectionGroup(db, 'plants'),
     orderBy('createdAt', 'desc'),
@@ -38,19 +60,9 @@ export async function getPublicPlants(excludeUserId: string): Promise<Plant[]> {
   );
   const snapshot = await getDocs(q);
   return snapshot.docs
-    .map(docSnap => ({
+    .map((docSnap) => ({
       id: docSnap.id,
       ...(docSnap.data() as Omit<Plant, 'id'>),
     }))
-    .filter(p => p.userId !== excludeUserId && p.isPrivate !== true);
-}
-
-export async function updatePlant(userId: string, plantId: string, data: Partial<Plant>) {
-  const ref = doc(db, 'users', userId, 'plants', plantId);
-  return await updateDoc(ref, data);
-}
-
-export async function deletePlant(userId: string, plantId: string) {
-  const ref = doc(db, 'users', userId, 'plants', plantId);
-  return await deleteDoc(ref);
-}
+    .filter((p) => p.userId !== excludeUserId && p.isPrivate !== true);
+};
