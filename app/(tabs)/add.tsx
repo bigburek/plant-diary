@@ -1,11 +1,12 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useDispatch } from 'react-redux';
 
 import Icon from '@/components/icon';
 import { Colors } from '@/constants/theme';
+import { identifyPlantFromImage, PlantIdentificationResult, PlantIdentifyError } from '@/lib/plantIdentify';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
 import { AppDispatch } from '@/store';
@@ -27,6 +28,9 @@ export default function AddPlantScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [identifying, setIdentifying] = useState(false);
+  const [identifyResult, setIdentifyResult] = useState<PlantIdentificationResult | null>(null);
+
   useEffect(() => {
     if (params.nickname) setNickname(params.nickname as string);
     if (params.species) setSpecies(params.species as string);
@@ -37,14 +41,42 @@ export default function AddPlantScreen() {
     const p = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!p.granted) { alert('Please allow access to your photo library.'); return; }
     const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
-    if (!r.canceled) setImageUri(r.assets[0].uri);
+    if (!r.canceled) { setImageUri(r.assets[0].uri); setIdentifyResult(null); }
   };
 
   const takePhoto = async () => {
     const p = await ImagePicker.requestCameraPermissionsAsync();
     if (!p.granted) { alert('Please allow camera access.'); return; }
     const r = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [4, 3], quality: 0.8 });
-    if (!r.canceled) setImageUri(r.assets[0].uri);
+    if (!r.canceled) { setImageUri(r.assets[0].uri); setIdentifyResult(null); }
+  };
+
+  const handleIdentify = async () => {
+    if (!imageUri) { alert('Add a photo first, then tap Identify with AI.'); return; }
+    setIdentifying(true);
+    setIdentifyResult(null);
+    try {
+      const result = await identifyPlantFromImage(imageUri);
+
+      if (!result.isPlant) {
+        alert("Hmm, that doesn't look like a plant. Try a clearer, closer photo.");
+        return;
+      }
+
+      setIdentifyResult(result);
+      if (!nickname.trim()) setNickname(result.commonName || result.scientificName);
+      setSpecies(result.scientificName || result.commonName);
+      if (result.wateringIntervalDays) setWateringInterval(String(result.wateringIntervalDays));
+    } catch (err) {
+      if (err instanceof PlantIdentifyError && err.code === 'NO_API_KEY') {
+        alert('AI identification needs a free Gemini API key. Get one at aistudio.google.com/apikey and add it as GEMINI_API_KEY in your .env file.');
+      } else {
+        console.error('Plant identification failed', err);
+        alert('Could not identify this plant right now. You can still fill in the details manually.');
+      }
+    } finally {
+      setIdentifying(false);
+    }
   };
 
   const handleAddPlant = async () => {
@@ -71,7 +103,7 @@ export default function AddPlantScreen() {
       }));
 
       setNickname(''); setSpecies(''); setWateringInterval('5');
-      setIsPrivate(false); setImageUri(null);
+      setIsPrivate(false); setImageUri(null); setIdentifyResult(null);
       router.replace('/(tabs)');
     } catch (error) {
       console.error('Failed to save plant', error);
@@ -106,6 +138,49 @@ export default function AddPlantScreen() {
           <Text style={[styles.imageBtnText, { color: C.text }]}>Camera</Text>
         </Pressable>
       </View>
+
+      {imageUri && (
+        <Pressable
+          style={[styles.identifyButton, { backgroundColor: C.tint, opacity: identifying ? 0.7 : 1 }]}
+          onPress={handleIdentify}
+          disabled={identifying}
+        >
+          {identifying ? (
+            <ActivityIndicator size="small" color={C.background} />
+          ) : (
+            <Icon name="sparkle" size={16} color={C.background} strokeWidth={2} />
+          )}
+          <Text style={[styles.identifyButtonText, { color: C.background }]}>
+            {identifying ? 'Identifying…' : 'Identify with AI'}
+          </Text>
+        </Pressable>
+      )}
+
+      {identifyResult && (
+        <View style={[styles.identifyCard, { backgroundColor: C.card, borderColor: C.tint }]}>
+          <View style={styles.identifyCardHeader}>
+            <Icon name="sparkle" size={16} color={C.title} strokeWidth={2} />
+            <Text style={[styles.identifyCardTitle, { color: C.title }]}>
+              {identifyResult.commonName || identifyResult.scientificName}
+            </Text>
+            <Pressable onPress={() => setIdentifyResult(null)} hitSlop={8}>
+              <Icon name="x" size={16} color={C.textLight} />
+            </Pressable>
+          </View>
+          <Text style={[styles.identifyCardSub, { color: C.textLight }]}>
+            {identifyResult.scientificName} · {identifyResult.confidence}% confidence
+          </Text>
+          {!!identifyResult.sunlight && (
+            <Text style={[styles.identifyCardLine, { color: C.text }]}>☀ {identifyResult.sunlight}</Text>
+          )}
+          {!!identifyResult.careTips && (
+            <Text style={[styles.identifyCardLine, { color: C.text }]}>{identifyResult.careTips}</Text>
+          )}
+          <Text style={[styles.identifyCardNote, { color: C.textLight }]}>
+            Filled in below — feel free to edit before saving.
+          </Text>
+        </View>
+      )}
 
       <Text style={[styles.label, { color: C.textLight }]}>Plant nickname</Text>
       <TextInput placeholder="e.g. My Monstera" placeholderTextColor={C.textLight} value={nickname} onChangeText={setNickname} style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} />
@@ -153,6 +228,14 @@ const styles = StyleSheet.create({
   imageButtons: { flexDirection: 'row', gap: 10 },
   imageBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
   imageBtnText: { fontSize: 14, fontWeight: '600' },
+  identifyButton: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 2 },
+  identifyButtonText: { fontSize: 14, fontWeight: '700' },
+  identifyCard: { borderWidth: 1.5, borderRadius: 14, padding: 14, gap: 4, marginTop: 2 },
+  identifyCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  identifyCardTitle: { fontSize: 16, fontWeight: '700', flex: 1 },
+  identifyCardSub: { fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  identifyCardLine: { fontSize: 13, lineHeight: 18 },
+  identifyCardNote: { fontSize: 11, fontStyle: 'italic', marginTop: 4 },
   label: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 },
   input: { borderWidth: 1.5, borderRadius: 12, padding: 14, fontSize: 15 },
   toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 14, marginTop: 4 },

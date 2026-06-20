@@ -13,6 +13,7 @@ export default {
       storageBucket: process.env.STORAGE_BUCKET,
       messagingSenderId: process.env.SENDER_ID,
       appId: process.env.APP_ID,
+      geminiApiKey: process.env.GEMINI_API_KEY,
 
       eas: {
         projectId: '26fe15ae-da6e-4625-8146-8e7f1a138145',

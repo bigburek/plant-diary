@@ -29,6 +29,7 @@ export type IconName =
   | 'qr'
   | 'leaf'
   | 'seedling'
+  | 'sparkle'
   |  'chevron-left';
 
 interface Props {
@@ -66,6 +67,7 @@ const ICON_MAP: Record<IconName, React.ComponentProps<typeof MaterialCommunityIc
   qr: 'qrcode',
   leaf: 'leaf',
   seedling: 'sprout',
+  sparkle: 'auto-fix',
 };
 
 export default function Icon({ name, size = 24, color = '#2C4A2C', strokeWidth }: Props) {
