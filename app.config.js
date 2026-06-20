@@ -25,7 +25,14 @@ export default {
     },
 
     plugins: [
-      "expo-barcode-scanner"
+      "expo-barcode-scanner",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#2C4A2C"
+        }
+      ]
     ]
   }
 };

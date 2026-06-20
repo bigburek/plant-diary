@@ -20,7 +20,8 @@ export const addPlant = createAsyncThunk(
       docRef.id,
       plantData.nickname,
       plantData.lastWateredAt,
-      plantData.wateringInterval
+      plantData.wateringInterval,
+      plantData.notificationsEnabled ?? true
     );
     await updateDoc(doc(db, 'users', userId, 'plants', docRef.id), { notificationId });
   }

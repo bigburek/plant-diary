@@ -10,4 +10,6 @@ export type Plant = {
   notificationId?: string;
   isPrivate?: boolean;
   localImageUri?: string;
+  instructions?: string;
+  notificationsEnabled?: boolean;
 };

@@ -35,7 +35,13 @@ export default function PlantScreen() {
       const now = Date.now();
       const daysSinceLast = (now - plant.lastWateredAt) / (1000 * 60 * 60 * 24);
       const newStreak = daysSinceLast >= plant.wateringInterval ? plant.streak + 1 : plant.streak;
-      const newNotificationId = await schedulePlantNotification(plant.id, plant.nickname, now, plant.wateringInterval);
+      const newNotificationId = await schedulePlantNotification(
+        plant.id,
+        plant.nickname,
+        now,
+        plant.wateringInterval,
+        plant.notificationsEnabled ?? true
+      );
 
       await updatePlant(user.uid, plant.id, {
         lastWateredAt: now,
@@ -124,6 +130,16 @@ export default function PlantScreen() {
               <Text style={[styles.qrLinkText, { color: C.text }]}>Generate QR</Text>
             </Pressable>
           </View>
+
+          {!!plant.instructions && (
+            <View style={[styles.instructionsCard, { backgroundColor: C.white }]}>
+              <View style={styles.instructionsHeader}>
+                <Icon name="notes" size={18} color={C.tint} />
+                <Text style={[styles.instructionsTitle, { color: C.title }]}>Care Instructions</Text>
+              </View>
+              <Text style={[styles.instructionsText, { color: C.text }]}>{plant.instructions}</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -168,6 +184,10 @@ const styles = StyleSheet.create({
   waterButtonText: { fontSize: 16, fontWeight: '700' },
   qrLink: { marginTop: 16, alignItems: 'center', paddingVertical: 8, flexDirection: 'row', justifyContent: 'center', gap: 6 },
   qrLinkText: { fontSize: 15, fontWeight: '500' },
+  instructionsCard: { borderRadius: 16, padding: 20, marginTop: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+  instructionsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  instructionsTitle: { fontSize: 17, fontWeight: '700' },
+  instructionsText: { fontSize: 14, lineHeight: 21 },
   qrOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   qrBox: { padding: 28, borderRadius: 20, alignItems: 'center', gap: 16, width: 300 },
   qrTitle: { fontSize: 20, fontWeight: '700' },

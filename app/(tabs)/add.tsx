@@ -12,7 +12,6 @@ import { useTheme } from '@/providers/ThemeContext';
 import { AppDispatch } from '@/store';
 import { addPlant } from '@/store/plantsSlice';
 
-
 export default function AddPlantScreen() {
   const { user } = useAuth();
   const router = useRouter();
@@ -24,7 +23,9 @@ export default function AddPlantScreen() {
   const [nickname, setNickname] = useState('');
   const [species, setSpecies] = useState('');
   const [wateringInterval, setWateringInterval] = useState('5');
+  const [instructions, setInstructions] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -67,6 +68,10 @@ export default function AddPlantScreen() {
       if (!nickname.trim()) setNickname(result.commonName || result.scientificName);
       setSpecies(result.scientificName || result.commonName);
       if (result.wateringIntervalDays) setWateringInterval(String(result.wateringIntervalDays));
+      if (!instructions.trim()) {
+        const combined = [result.sunlight, result.careTips].filter(Boolean).join('. ');
+        if (combined) setInstructions(combined);
+      }
     } catch (err) {
       if (err instanceof PlantIdentifyError && err.code === 'NO_API_KEY') {
         alert('AI identification needs a free Gemini API key. Get one at aistudio.google.com/apikey and add it as GEMINI_API_KEY in your .env file.');
@@ -99,11 +104,13 @@ export default function AddPlantScreen() {
           notificationId: '',
           isPrivate,
           localImageUri: imageUri ?? '',
+          instructions: instructions.trim(),
+          notificationsEnabled,
         },
       }));
 
-      setNickname(''); setSpecies(''); setWateringInterval('5');
-      setIsPrivate(false); setImageUri(null); setIdentifyResult(null);
+      setNickname(''); setSpecies(''); setWateringInterval('5'); setInstructions('');
+      setIsPrivate(false); setNotificationsEnabled(true); setImageUri(null); setIdentifyResult(null);
       router.replace('/(tabs)');
     } catch (error) {
       console.error('Failed to save plant', error);
@@ -191,17 +198,65 @@ export default function AddPlantScreen() {
       <Text style={[styles.label, { color: C.textLight }]}>Water every (days)</Text>
       <TextInput placeholder="5" placeholderTextColor={C.textLight} keyboardType="number-pad" value={wateringInterval} onChangeText={(t) => setWateringInterval(t.replace(/[^0-9]/g, ''))} style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} />
 
-      <View style={[styles.toggleRow, { backgroundColor: C.card }]}>
-        <View style={styles.toggleLeft}>
+      <View style={styles.labelRow}>
+        <Icon name="notes" size={14} color={C.textLight} />
+        <Text style={[styles.label, { color: C.textLight, marginBottom: 0 }]}>Care instructions</Text>
+      </View>
+      <TextInput
+        placeholder="e.g. Bright indirect light. Let soil dry between waterings."
+        placeholderTextColor={C.textLight}
+        value={instructions}
+        onChangeText={setInstructions}
+        multiline
+        numberOfLines={4}
+        style={[styles.input, styles.textArea, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]}
+      />
+      <Text style={[styles.helperText, { color: C.textLight }]}>
+        Filled in automatically by "Identify with AI" — feel free to write your own instead.
+      </Text>
+
+      {/* 3-Column Strict Grid Architecture for Rows */}
+      
+      {/* Row 1: Public/Private */}
+      <View style={[styles.gridRow, { backgroundColor: C.card }]}>
+        <View style={styles.colIcon}>
           <View style={[styles.toggleIconBox, { backgroundColor: C.accent }]}>
             <Icon name={isPrivate ? 'lock' : 'globe'} size={16} color={C.title} strokeWidth={2} />
           </View>
-          <View>
-            <Text style={[styles.toggleLabel, { color: C.text }]}>{isPrivate ? 'Private' : 'Public'}</Text>
-            <Text style={[styles.toggleSub, { color: C.textLight }]}>{isPrivate ? 'Only you can see this plant' : 'Visible to others in Explore'}</Text>
+        </View>
+        
+        <View style={styles.colText}>
+          <Text style={[styles.toggleLabel, { color: C.text }]}>{isPrivate ? 'Private' : 'Public'}</Text>
+          <Text style={[styles.toggleSub, { color: C.textLight }]}>
+            {isPrivate ? 'Only you can see this plant' : 'Visible to others in Explore'}
+          </Text>
+        </View>
+        
+        <View style={styles.colSwitch}>
+          <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: C.accent, true: C.tint }} thumbColor={C.background} />
+        </View>
+      </View>
+
+      {/* Row 2: Watering Reminders */}
+      <View style={[styles.gridRow, { backgroundColor: C.card }]}>
+        <View style={styles.colIcon}>
+          <View style={[styles.toggleIconBox, { backgroundColor: C.accent }]}>
+            <Icon name="bell" size={16} color={C.title} strokeWidth={2} />
           </View>
         </View>
-        <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: C.accent, true: C.tint }} thumbColor={C.background} />
+        
+        <View style={styles.colText}>
+          <Text style={[styles.toggleLabel, { color: C.text }]}>Watering reminders</Text>
+          <Text style={[styles.toggleSub, { color: C.textLight }]}>
+            {notificationsEnabled 
+              ? "You'll get a notification when it's time to water" 
+              : "No reminders for this plant"}
+          </Text>
+        </View>
+        
+        <View style={styles.colSwitch}>
+          <Switch value={notificationsEnabled} onValueChange={setNotificationsEnabled} trackColor={{ false: C.accent, true: C.tint }} thumbColor={C.background} />
+        </View>
       </View>
 
       <Pressable style={({ pressed }) => [styles.saveButton, { backgroundColor: C.card, opacity: pressed || loading ? 0.7 : 1 }]} onPress={handleAddPlant} disabled={loading}>
@@ -237,12 +292,45 @@ const styles = StyleSheet.create({
   identifyCardLine: { fontSize: 13, lineHeight: 18 },
   identifyCardNote: { fontSize: 11, fontStyle: 'italic', marginTop: 4 },
   label: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   input: { borderWidth: 1.5, borderRadius: 12, padding: 14, fontSize: 15 },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 14, marginTop: 4 },
-  toggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  toggleIconBox: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  textArea: { minHeight: 90, textAlignVertical: 'top' },
+  helperText: { fontSize: 11, fontStyle: 'italic', marginTop: -4 },
+  
+  // FIXED GRID STRUCTURING SYSTEM
+  gridRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 14, 
+    borderRadius: 14, 
+    marginTop: 4,
+    width: '100%',
+  },
+  colIcon: {
+    width: '12%', // Locks item down tightly on left side
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  colText: {
+    width: '68%', // Restricts total running text width footprint explicitly 
+    paddingRight: 8,
+    justifyContent: 'center',
+  },
+  colSwitch: {
+    width: '20%', // Locks the switch securely inside the component box on the right
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  toggleIconBox: { 
+    width: 34, 
+    height: 34, 
+    borderRadius: 10, 
+    alignItems: 'center', 
+    justifyContent: 'center'
+  },
   toggleLabel: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
   toggleSub: { fontSize: 12 },
+  
   saveButton: { paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 8, flexDirection: 'row', justifyContent: 'center', gap: 8 },
   saveButtonText: { fontSize: 16, fontWeight: '700' },
   scanButton: { paddingVertical: 14, borderRadius: 14, alignItems: 'center', borderWidth: 1.5, flexDirection: 'row', justifyContent: 'center', gap: 8 },

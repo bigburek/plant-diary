@@ -27,7 +27,9 @@ export default function EditPlantScreen() {
   const [nickname, setNickname] = useState('');
   const [species, setSpecies] = useState('');
   const [wateringInterval, setWateringInterval] = useState('');
+  const [instructions, setInstructions] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [imageUri, setImageUri] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,7 +37,9 @@ export default function EditPlantScreen() {
       setNickname(plantFromStore.nickname);
       setSpecies(plantFromStore.species);
       setWateringInterval(String(plantFromStore.wateringInterval));
+      setInstructions(plantFromStore.instructions ?? '');
       setIsPrivate(plantFromStore.isPrivate ?? false);
+      setNotificationsEnabled(plantFromStore.notificationsEnabled ?? true);
       setImageUri(plantFromStore.localImageUri ?? null);
     }
   }, [plantFromStore]);
@@ -59,7 +63,13 @@ export default function EditPlantScreen() {
     setSaving(true);
     try {
       if (plantFromStore.notificationId) await cancelPlantNotification(plantFromStore.notificationId);
-      const newNotificationId = await schedulePlantNotification(id, nickname, plantFromStore.lastWateredAt, Number(wateringInterval));
+      const newNotificationId = await schedulePlantNotification(
+        id,
+        nickname,
+        plantFromStore.lastWateredAt,
+        Number(wateringInterval),
+        notificationsEnabled
+      );
 
       await updatePlant(user.uid, id, {
         nickname: nickname.trim(),
@@ -67,6 +77,8 @@ export default function EditPlantScreen() {
         wateringInterval: Number(wateringInterval),
         notificationId: newNotificationId,
         isPrivate,
+        notificationsEnabled,
+        instructions: instructions.trim(),
         localImageUri: imageUri ?? '',
       });
 
@@ -129,6 +141,20 @@ export default function EditPlantScreen() {
       <Text style={[styles.label, { color: C.textLight }]}>Water every (days)</Text>
       <TextInput value={wateringInterval} onChangeText={setWateringInterval} keyboardType="number-pad" placeholder="Days" placeholderTextColor={C.textLight} style={[styles.input, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]} />
 
+      <View style={styles.labelRow}>
+        <Icon name="notes" size={14} color={C.textLight} />
+        <Text style={[styles.label, { color: C.textLight, marginBottom: 0 }]}>Care instructions</Text>
+      </View>
+      <TextInput
+        value={instructions}
+        onChangeText={setInstructions}
+        placeholder="e.g. Bright indirect light. Let soil dry between waterings."
+        placeholderTextColor={C.textLight}
+        multiline
+        numberOfLines={4}
+        style={[styles.input, styles.textArea, { borderColor: C.tint, color: C.text, backgroundColor: C.background }]}
+      />
+
       <View style={[styles.toggleRow, { backgroundColor: C.card }]}>
         <View style={styles.toggleTextContainer}>
           <View style={styles.toggleHeader}>
@@ -138,6 +164,19 @@ export default function EditPlantScreen() {
           <Text style={[styles.toggleSub, { color: C.textLight }]}>{isPrivate ? 'Only you can see this plant' : 'Visible to others in Explore'}</Text>
         </View>
         <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: C.accent, true: C.tint }} thumbColor={C.background} />
+      </View>
+
+      <View style={[styles.toggleRow, { backgroundColor: C.card }]}>
+        <View style={styles.toggleTextContainer}>
+          <View style={styles.toggleHeader}>
+            <Icon name="bell" size={16} color={C.text} />
+            <Text style={[styles.toggleLabel, { color: C.text }]}>Watering reminders</Text>
+          </View>
+          <Text style={[styles.toggleSub, { color: C.textLight }]}>
+            {notificationsEnabled ? 'Notifications enabled for this plant' : 'No reminders for this plant'}
+          </Text>
+        </View>
+        <Switch value={notificationsEnabled} onValueChange={setNotificationsEnabled} trackColor={{ false: C.accent, true: C.tint }} thumbColor={C.background} />
       </View>
 
       <Pressable style={({ pressed }) => [styles.saveButton, { backgroundColor: C.card, opacity: pressed || saving ? 0.7 : 1 }]} onPress={handleSave} disabled={saving}>
@@ -163,7 +202,9 @@ const styles = StyleSheet.create({
   imageBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
   imageBtnText: { fontSize: 14, fontWeight: '600' },
   label: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   input: { borderWidth: 1.5, borderRadius: 12, padding: 14, fontSize: 15 },
+  textArea: { minHeight: 90, textAlignVertical: 'top' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 14, marginTop: 4 },
   toggleTextContainer: { flex: 1, paddingRight: 10 },
   toggleHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },

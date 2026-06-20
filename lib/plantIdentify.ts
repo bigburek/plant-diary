@@ -55,7 +55,14 @@ Return ONLY the JSON object, nothing else.`;
 
 function getApiKey(): string | undefined {
   const key = Constants.expoConfig?.extra?.geminiApiKey;
-  return typeof key === 'string' && key.trim().length > 0 ? key.trim() : undefined;
+  if (!key || typeof key !== 'string' || key.trim().length === 0) {
+    console.warn(
+      '[plantIdentify] GEMINI_API_KEY not found in Constants.expoConfig.extra.geminiApiKey — ' +
+      'check your .env file and restart with "npx expo start -c" (or rebuild the dev client).'
+    );
+    return undefined;
+  }
+  return key.trim();
 }
 
 export class PlantIdentifyError extends Error {
