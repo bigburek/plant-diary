@@ -13,13 +13,13 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import PlantIcon, { variantFromId } from '@/components/plant-icon';
 import { Colors } from '@/constants/theme';
+import { auth } from '@/firebase/config';
+import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/providers/ThemeContext';
 import { AppDispatch, RootState } from '@/store';
 import { clearPlants, startPlantsListener } from '@/store/plantsSlice';
 import { Plant } from '@/types/plant';
-import { useAuth } from '@/providers/AuthProvider';
 import { signOut } from 'firebase/auth';
-import { auth } from '@/firebase/config';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -33,10 +33,7 @@ export default function HomeScreen() {
   const [search, setSearch] = useState('');
   const [selectedPlant, setSelectedPlant] = useState<Plant | null>(null);
 
-  // Matches professor's pattern exactly:
-  // dispatch(startPlantsListener()) starts the onSnapshot listener.
-  // The returned value IS the unsubscribe function — we clean it up on unmount.
-  // Also clears the Redux store on unmount so the next user starts fresh.
+  
   useEffect(() => {
     const unsubscribe = dispatch(startPlantsListener());
     return () => {
